@@ -83,4 +83,45 @@ describe('findLinkPath', () => {
     // Corner to corner of a 4 × 4 grid: three steps down and three across.
     expect(second!.length).toBe(6)
   })
+
+  it('goes around a blocked link', () => {
+    // A straight road 0 → 1 → 2 and a detour 0 → 3 → 2, all two-way and all the same length.
+    const nodes: [number, number][] = [[9.7, 52.37], [9.701, 52.37], [9.702, 52.37], [9.701, 52.3705]]
+    const pairs: [number, number][] = [[0, 1], [1, 2], [0, 3], [3, 2]]
+    const specs = pairs.flatMap(([a, b]) => [
+      { from: a, to: b, geometry: [nodes[a]!, nodes[b]!], freeSpeedKmh: 30, capacityVph: 600 },
+      { from: b, to: a, geometry: [nodes[b]!, nodes[a]!], freeSpeedKmh: 30, capacityVph: 600 },
+    ])
+    const network = createNetwork(nodes, specs)
+    const space = new SearchSpace(4)
+    const cost = (id: number) => network.links[id]!.lengthM
+    // Link 0 is 0 → 1 (the straight road's first piece).
+    expect(network.links[0]!.from).toBe(0)
+    expect(network.links[0]!.to).toBe(1)
+    const blocked = new Uint8Array(network.links.length)
+    blocked[0] = 1
+    const path = findLinkPath(network, space, 0, 2, cost, 0, blocked)
+    expect(path).not.toBeNull()
+    expect(path!.includes(0)).toBe(false)
+    // The detour goes 0 → 3 → 2.
+    expect(path!.map((id) => network.links[id]!.to)).toEqual([3, 2])
+  })
+
+  it('finds no path when blocked links cut every way', () => {
+    const network = gridNetwork({ rows: 1, cols: 3, spacingM: 100 })
+    const space = new SearchSpace(3)
+    const cost = (id: number) => network.links[id]!.lengthM
+    const blocked = new Uint8Array(network.links.length)
+    // Block every link that leaves node 1, so node 2 cannot be reached from node 0 through it.
+    for (const id of network.outgoing[1]!) blocked[id] = 1
+    expect(findLinkPath(network, space, 0, 2, cost, 0, blocked)).toBeNull()
+    // Without the mask the same search still succeeds.
+    expect(findLinkPath(network, space, 0, 2, cost, 0)).not.toBeNull()
+  })
+
+  it('returns an empty path for the same node even when its links are blocked', () => {
+    const network = gridNetwork({ rows: 2, cols: 2, spacingM: 100 })
+    const blocked = new Uint8Array(network.links.length).fill(1)
+    expect(findLinkPath(network, new SearchSpace(4), 1, 1, () => 1, 0, blocked)).toEqual([])
+  })
 })

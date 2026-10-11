@@ -97,6 +97,28 @@ Run `npm run build` before `npm run build:lib`: the site build empties `dist/`. 
 - **Static:** `?routes=<url>` loads a routes file written by "Export GeoJSON" and animates it, with no computation.
   Without `?routes`, the page shows `sample-routes.geojson`.
 
+## Interactive mode
+
+`interactive.html` (linked from the demo, and published with it) is a second page on the same model, with routes
+calculated live instead of precomputed.
+
+- **Lock the view.** Pan and zoom to the area you want, then lock it. The road network is built from the map tiles under
+  that view, and the map is frozen so the network stays the one that was built. A view needing more than 100 tiles is
+  refused: zoom in. Unlock asks for confirmation and discards the network, the vehicles and the areas.
+- **Areas.** Vehicles (blue dots) spawn in the yellow origin area at the rate you set, and each drives to the green
+  destination area. Drag the areas with a mouse or a finger. A vehicle keeps the destination it was given at its spawn,
+  even when the green area moves.
+- **Blocked roads.** Links inside the red area are closed to routing. Vehicles already on them finish the link. A vehicle
+  whose re-plan finds no route disappears at the end of its current link.
+- **Re-planning.** Each vehicle re-plans from the end of its current link every two simulated minutes, as the routing
+  budget allows. The budget is a share of wall-clock time (half by default), so at high time ratios, or with many long
+  trips, the interval grows. The stats panel shows the measured gap.
+- **Time ratio** is how many simulated seconds pass per second on screen (1×, 10×, 60×). Routing runs in a Web Worker, so
+  the map stays responsive.
+
+The engine is `LiveSimulation` in `src/live.ts`. It follows `simulate`'s speed rules, and its tests check that the two
+agree when vehicles are not re-planned. The interactive mode does not export GeoJSON.
+
 ## Limits
 
 - **No queues.** A jammed link is passed at its floor speed, and vehicles keep entering it at their own pace. Flows into a
@@ -107,7 +129,8 @@ Run `npm run build` before `npm run build:lib`: the site build empties `dist/`. 
   over more slots would damp it; this is not done.
 - **Self-influence.** A vehicle's own entry counts toward the next slot's speed of its link. With realistic capacities this
   is a few per cent for one vehicle.
-- **Route choice at departure.** A vehicle plans once, with the departure slot's speeds, and does not re-route in transit.
+- **Route choice at departure.** In the static engine (`simulate`), a vehicle plans once, with the departure slot's speeds,
+  and does not re-route in transit. The interactive mode does re-route; see below.
 - **Parameters are illustrative.** The class capacities (`CAPACITY_VPH_BY_CLASS`) and the BPR parameters are not calibrated.
 - **Speed.** Each trip runs one A* search over the snapped network, so the cost grows with trips and network size.
 

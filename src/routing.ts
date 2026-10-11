@@ -80,6 +80,8 @@ class MinHeap {
  *
  * A* with the straight-line distance as the heuristic: `secondsPerMetreFloor` must not exceed the smallest cost per
  * metre any link can have, so the heuristic never overestimates and the path is optimal.
+ *
+ * Links with `blocked[linkId] === 1` are skipped, not costed: a search cannot use them at any price.
  */
 export function findLinkPath(
   network: Network,
@@ -88,6 +90,7 @@ export function findLinkPath(
   destination: number,
   linkCostS: (linkId: number) => number,
   secondsPerMetreFloor: number,
+  blocked?: Uint8Array,
 ): number[] | null {
   if (origin === destination) return []
   const nodes = network.nodes
@@ -110,6 +113,7 @@ export function findLinkPath(
 
     const base = space.cost[node]!
     for (const linkId of network.outgoing[node]!) {
+      if (blocked && blocked[linkId]) continue
       const to = links[linkId]!.to
       if (space.closed[to] === id) continue
       const cost = base + linkCostS(linkId)

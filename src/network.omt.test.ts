@@ -46,4 +46,22 @@ describe('networkFromOmtGraph', () => {
     const index = (coords: [number, number]) => network.nodes.findIndex((n) => n[0] === coords[0] && n[1] === coords[1])
     expect(network.outgoing[index([9.701, 52.37])]!.length).toBe(2)
   })
+
+  it('drops edges between coincident nodes instead of rejecting the whole graph', () => {
+    // Nodes 1 and 2 sit at the same place, as they can at a tile seam. The edge between them claims 111 m.
+    const seam: OmtGraphLike = {
+      nodes: new Map([
+        [1, { id: 1, coords: [9.7, 52.37] }],
+        [2, { id: 2, coords: [9.7, 52.37] }],
+        [3, { id: 3, coords: [9.701, 52.37] }],
+      ]),
+      edges: [
+        { source: 1, target: 2, cost: 111, reverseCost: 111, length: 111, speed: 50, properties: { class: 'primary' } },
+        { source: 2, target: 3, cost: 111, reverseCost: 111, length: 111, speed: 50, properties: { class: 'primary' } },
+      ],
+    }
+    const network = networkFromOmtGraph(seam)
+    expect(network.links).toHaveLength(2)
+    expect(network.links.every((l) => l.lengthM > 0)).toBe(true)
+  })
 })

@@ -1,4 +1,4 @@
-import type { LngLat } from './geo'
+import { haversineM, type LngLat } from './geo'
 import { createNetwork, type LinkSpec, type Network } from './network'
 
 /*
@@ -56,7 +56,9 @@ export const DEFAULT_CAPACITY_VPH = 600
 
 /**
  * The network of a graph. A two-way edge becomes two links, a one-way edge one; edges without length or speed are
- * dropped, as are edges that loop back onto their own node.
+ * dropped, as are edges that loop back onto their own node and edges between coincident nodes (a tile seam can put two
+ * nodes at one place). The length that counts is the distance between the two nodes, not the edge's `length` field,
+ * because `createNetwork` rejects a link of zero length.
  */
 export function networkFromOmtGraph(
   graph: OmtGraphLike,
@@ -80,11 +82,12 @@ export function networkFromOmtGraph(
     const a = graph.nodes.get(edge.source)
     const b = graph.nodes.get(edge.target)
     if (!a || !b) continue
+    const pa: LngLat = [a.coords[0], a.coords[1]]
+    const pb: LngLat = [b.coords[0], b.coords[1]]
+    if (!(haversineM(pa, pb) > 0)) continue
     const capacityVph = capacityVphByClass[String(edge.properties?.class ?? '')] ?? DEFAULT_CAPACITY_VPH
     const ia = nodeIndex(a)
     const ib = nodeIndex(b)
-    const pa: LngLat = [a.coords[0], a.coords[1]]
-    const pb: LngLat = [b.coords[0], b.coords[1]]
     if (edge.cost !== -1) {
       specs.push({ from: ia, to: ib, geometry: [pa, pb], freeSpeedKmh: edge.speed, capacityVph })
     }

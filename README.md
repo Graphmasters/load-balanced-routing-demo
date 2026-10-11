@@ -118,3 +118,7 @@ Copyright © 2026 Graphmasters. Licensed under the GNU Affero General Public Lic
 The demo imports [omt-router](https://github.com/AbelVM/omt-router), which is AGPL-3.0-only, to build the road graph. That
 is why this repository is AGPL too. The engine in `src/` has no dependency on omt-router. The AGPL requires the source of
 modified versions to be offered to users who interact with them over a network; this repository is that source.
+
+## Provenance
+
+The code in this repository was generated with Claude Haiku 5.5 (Claude Code).

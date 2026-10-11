@@ -22,6 +22,10 @@ builds the road network from map tiles in your browser and simulates on it.
 - **Network.** Links are directed road pieces between consecutive OpenStreetMap vertices. Trips snap to the largest
   strongly connected part of the network, so no trip starts on an island.
 
+## Sources of the link speed model
+
+The core formula is the BPR curve from the US Bureau of Public Roads, and its default constants are α = 0.15 and β = 4. The constants are from memory and have not yet been checked against a primary source. The "previous slot's entries" rule, the floor, and the capacity table are the project's own choices. The code labels the capacities as illustrative, not calibrated.
+
 ## Use the engine
 
 The engine is the code in `src/`. It works on any road network of the shape `createNetwork` describes, and

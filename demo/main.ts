@@ -18,6 +18,7 @@ import {
   type TimedRoute,
 } from '../src/index'
 import { loadBasemap, ROUTING_ZOOM, tilesCovering, type Bounds } from './tiles'
+import { applyTheme, currentTheme, onSystemThemeChange, rememberTheme, type Theme } from './theme'
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl)
 
@@ -29,7 +30,31 @@ maplibregl.setWorkerUrl(maplibreWorkerUrl)
 
 /** The scenario clock starts at this hour; the simulation counts seconds from it. */
 const CLOCK_START_HOUR = 17
-const STYLE_URL = 'https://tiles.openfreemap.org/styles/positron'
+/** The basemap style and the overlay colours of each theme. */
+interface Palette {
+  readonly style: string
+  readonly origin: string
+  readonly destination: string
+  readonly route: string
+  readonly vehicle: string
+}
+const PALETTES: Record<Theme, Palette> = {
+  light: {
+    style: 'https://tiles.openfreemap.org/styles/positron',
+    origin: '#2f6fdb',
+    destination: '#d6453d',
+    route: '#1f3b8a',
+    vehicle: '#ff5a1f',
+  },
+  dark: {
+    style: 'https://tiles.openfreemap.org/styles/dark',
+    origin: '#6b9bff',
+    destination: '#ff6f66',
+    route: '#a9c2ff',
+    vehicle: '#ff7a3d',
+  },
+}
+
 /** The precomputed routes the page shows until a live run replaces them. */
 const SAMPLE_ROUTES = 'sample-routes.geojson'
 const MARGIN_M = 1500
@@ -56,9 +81,11 @@ const $ = <T extends HTMLElement>(id: string): T => {
 const input = (id: string): string => $<HTMLInputElement>(id).value
 const num = (id: string): number => Number(input(id))
 
+let theme: Theme = currentTheme()
+applyTheme(theme)
 const map = new maplibregl.Map({
   container: 'map',
-  style: STYLE_URL,
+  style: PALETTES[theme].style,
   center: [9.765, 52.38],
   zoom: 12.2,
   maxPitch: 0,
@@ -119,8 +146,13 @@ function areasGeoJSON(): GeoData {
   }
 }
 
+/** The data of each source. A style change drops the sources, so they are added again with this data. */
+const sourceData = new Map<string, GeoData>()
+
 function setSource(id: string, data: object): void {
-  ;(map.getSource(id) as maplibregl.GeoJSONSource).setData(data as GeoData)
+  sourceData.set(id, data as GeoData)
+  // Absent while a style is loading: addOverlays adds the stored data when the style is ready.
+  ;(map.getSource(id) as maplibregl.GeoJSONSource | undefined)?.setData(data as GeoData)
 }
 
 function setStatus(text: string): void {
@@ -284,36 +316,47 @@ function exportRoutes(): void {
 
 const EMPTY: GeoData = { type: 'FeatureCollection', features: [] }
 
-map.on('load', () => {
-  map.addSource('areas', { type: 'geojson', data: EMPTY })
+/** The sources and layers the demo draws, in the colours of the current theme, with the data they last had. */
+function addOverlays(): void {
+  const { origin, destination, route, vehicle } = PALETTES[theme]
+  const dataOf = (id: string): GeoData => sourceData.get(id) ?? EMPTY
+  map.addSource('areas', { type: 'geojson', data: dataOf('areas') })
   map.addLayer({
     id: 'areas-fill',
     type: 'fill',
     source: 'areas',
-    paint: { 'fill-color': byRole('#2f6fdb', '#d6453d'), 'fill-opacity': 0.12 },
+    paint: { 'fill-color': byRole(origin, destination), 'fill-opacity': 0.12 },
   })
   map.addLayer({
     id: 'areas-line',
     type: 'line',
     source: 'areas',
-    paint: { 'line-color': byRole('#2f6fdb', '#d6453d'), 'line-width': 1.5, 'line-dasharray': [2, 2] },
+    paint: { 'line-color': byRole(origin, destination), 'line-width': 1.5, 'line-dasharray': [2, 2] },
   })
-  map.addSource('routes', { type: 'geojson', data: EMPTY })
+  map.addSource('routes', { type: 'geojson', data: dataOf('routes') })
   map.addLayer({
     id: 'routes-line',
     type: 'line',
     source: 'routes',
     layout: { 'line-join': 'round', 'line-cap': 'round' },
-    paint: { 'line-color': '#1f3b8a', 'line-width': 1.4, 'line-opacity': 0.3 },
+    paint: { 'line-color': route, 'line-width': 1.4, 'line-opacity': 0.3 },
   })
-  map.addSource('vehicles', { type: 'geojson', data: EMPTY })
+  map.addSource('vehicles', { type: 'geojson', data: dataOf('vehicles') })
   map.addLayer({
     id: 'vehicles-dot',
     type: 'circle',
     source: 'vehicles',
-    paint: { 'circle-radius': 3.5, 'circle-color': '#ff5a1f', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1 },
+    paint: { 'circle-radius': 3.5, 'circle-color': vehicle, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1 },
   })
-  // The animation starts once the sources exist: a frame before that would throw and stop the loop.
+}
+
+// Runs for the first style and again after each theme change, which replaces the style and drops the overlay. The
+// animation and the static routes start once, with the first style.
+let started = false
+map.on('style.load', () => {
+  addOverlays()
+  if (started) return
+  started = true
   requestAnimationFrame(frame)
   $<HTMLButtonElement>('run').disabled = false
   void loadStatic(new URLSearchParams(window.location.search).get('routes') ?? SAMPLE_ROUTES)
@@ -334,3 +377,22 @@ $<HTMLInputElement>('scrub').addEventListener('input', (e) => {
   clockS = Number((e.target as HTMLInputElement).value)
 })
 $<HTMLButtonElement>('export').addEventListener('click', exportRoutes)
+
+const themeButton = $<HTMLButtonElement>('theme')
+/** The button names the theme that a click switches to. */
+const toggleLabel = (t: Theme): string => (t === 'dark' ? 'Light mode' : 'Dark mode')
+themeButton.textContent = toggleLabel(theme)
+/** Switches the page and the map to `next`. The style change drops the overlay, which addOverlays adds again. */
+function setTheme(next: Theme): void {
+  if (next === theme) return
+  theme = next
+  applyTheme(theme)
+  themeButton.textContent = toggleLabel(theme)
+  map.setStyle(PALETTES[theme].style, { diff: false })
+}
+themeButton.addEventListener('click', () => {
+  const next: Theme = theme === 'dark' ? 'light' : 'dark'
+  rememberTheme(next)
+  setTheme(next)
+})
+onSystemThemeChange(setTheme)
